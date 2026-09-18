@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Kent County Water Monitoring</title>
+
+    <link
+        rel="stylesheet"
+        href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+
+    <style>
+        #map {
+            height: 600px;
+        }
+
+        #controls {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f5f5f5;
+            border: 1px solid #ccc;
+        }
+    </style>
+</head>
+
+<body>
+
+    <h1>Kent County Water Monitoring</h1>
+
+    <div id="controls">
+        <label>
+            <input type="checkbox" id="readingsToggle">
+            Show only stations with current readings
+        </label>
+    </div>
+
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <script>
+
+        // Create the map
+        const map = L.map("map");
+
+        // OpenStreetMap basemap
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+            attribution: "&copy; OpenStreetMap contributors"
+        }).addTo(map);
+
+
+        // -------------------------
+        // Kent County
+        // -------------------------
+
+        fetch("./geographical_context.geojson")
+            .then(response => response.json())
+            .then(data => {
+
+                const countyLayer = L.geoJSON(data, {
+                    style: {
+                        weight: 3,
+                        fillOpacity: 0.1
+                    }
+                }).addTo(map);
+
+                // Zoom to Kent County
+                map.fitBounds(countyLayer.getBounds());
+
+            });
+
+
+         // -------------------------
+        // USGS Stations
+        // -------------------------
+
+        fetch("./usgs_stations.geojson")
+            .then(response => {
+                console.log("USGS response status:", response.status);
+                return response.json();
+            })
+            .then(data => {
+
+                console.log("USGS GeoJSON:", data);
+                console.log("Number of stations:", data.features.length);
+
+
+                // -------------------------
+                // All stations
+                // -------------------------
+
+                const allStationsLayer = L.geoJSON(data, {
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.marker(latlng);
+                    },
+
+                    onEachFeature: function(feature, layer) {
+
+                        const properties = feature.properties;
+                        const stationId = properties.id;
+                        const readings = properties.latest_readings || [];
+
+                        let readingsHTML = `
+                            <strong>${properties.name}</strong><br>
+                            Station ID: ${stationId}<br>
+                            <hr>
+                        `;
+
+                        if (readings.length === 0) {
+
+                            readingsHTML += `
+                                No current continuous readings available.
+                            `;
+
+                        } else {
+
+                            readings.forEach(reading => {
+
+                                readingsHTML += `
+                                    <strong>
+                                        ${reading.parameter_code ?? "Unknown parameter"}
+                                    </strong><br>
+
+                                    Value:
+                                    ${reading.value ?? "N/A"}
+                                    ${reading.unit ?? ""}<br>
+
+                                    Time:
+                                    ${reading.time ?? "N/A"}<br>
+
+                                    Status:
+                                    ${reading.approval_status ?? "N/A"}<br>
+                                    <br>
+                                `;
+                            });
+                        }
+
+                        layer.bindPopup(readingsHTML);
+                    }
+
+                }).addTo(map);
+
+
+                // -------------------------
+                // Stations WITH readings
+                // -------------------------
+
+                const stationsWithReadingsLayer = L.geoJSON(data, {
+
+                    filter: function(feature) {
+
+                        const readings =
+                            feature.properties.latest_readings || [];
+
+                        return readings.length > 0;
+                    },
+
+                    pointToLayer: function(feature, latlng) {
+                        return L.marker(latlng);
+                    },
+
+                    onEachFeature: function(feature, layer) {
+
+                        const properties = feature.properties;
+                        const stationId = properties.id;
+                        const readings = properties.latest_readings || [];
+
+                        let readingsHTML = `
+                            <strong>${properties.name}</strong><br>
+                            Station ID: ${stationId}<br>
+                            <hr>
+                        `;
+
+                        readings.forEach(reading => {
+
+                            readingsHTML += `
+                                <strong>
+                                    ${reading.parameter_code ?? "Unknown parameter"}
+                                </strong><br>
+
+                                Value:
+                                ${reading.value ?? "N/A"}
+                                ${reading.unit ?? ""}<br>
+
+                                Time:
+                                ${reading.time ?? "N/A"}<br>
+
+                                Status:
+                                ${reading.approval_status ?? "N/A"}<br>
+                                <br>
+                            `;
+                        });
+
+                        layer.bindPopup(readingsHTML);
+                    }
+
+                });
+
+
+                // -------------------------
+                // Toggle stations with readings
+                // -------------------------
+
+                const readingsToggle =
+                    document.getElementById("readingsToggle");
+
+                readingsToggle.addEventListener("change", function() {
+
+                    if (this.checked) {
+
+                        map.removeLayer(allStationsLayer);
+                        stationsWithReadingsLayer.addTo(map);
+
+                    } else {
+
+                        map.removeLayer(stationsWithReadingsLayer);
+                        allStationsLayer.addTo(map);
+                    }
+
+                });
+
+
+                // Debug information
+                const stationsWithReadings =
+                    data.features.filter(feature =>
+                        (feature.properties.latest_readings || []).length > 0
+                    );
+
+                console.log(
+                    "Stations with readings:",
+                    stationsWithReadings.length
+                );
+
+                stationsWithReadings.forEach(feature => {
+                    console.log(
+                        "Reading station:",
+                        feature.properties.id
+                    );
+                });
+
+            })
+            .catch(error => {
+                console.error("Error loading USGS stations:", error);
+            });
+
+    </script>
+<h1>Monitoring station data is obtained from USGS. Data from USGS is continuously updated.</h1>
+<h1>Geographic county boundaries are obtained from the IMAP service. The data was last updated Data Updated: 5/12/2025 at 9:57:05 AM.</h1>
+<h1> The last refresh of both data sources was on 9/17/2026 at 11:00 PM.</h1>
+</body>
+</html>
